@@ -1,12 +1,12 @@
 import {
-  getDocument,
-  type OnProgressParameters,
-  type PDFDocumentProxy,
-  type PDFPageProxy,
+	getDocument,
+	type OnProgressParameters,
+	type PDFDocumentProxy,
+	type PDFPageProxy,
 } from "pdfjs-dist";
 import type {
-  DocumentInitParameters,
-  TypedArray,
+	DocumentInitParameters,
+	TypedArray,
 } from "pdfjs-dist/types/src/display/api";
 import { useEffect, useState } from "react";
 
@@ -34,7 +34,7 @@ export interface usePDFDocumentParams {
    * @important If you set it to a very high value, it will cause the PDF to render very slowly and even freeze the browser.
    * @note In some browsers and devices like Safari in Mac, setting resolution to 1 will generate blurry PDFs.
    * @default 1
-  */
+   */
   resolution?: InitialPDFState["resolution"];
 }
 
@@ -59,6 +59,7 @@ export const usePDFDocumentContext = ({
   const [initialState, setInitialState] = useState<InitialPDFState | null>();
   const [rotation] = useState<number>(initialRotation);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: <onDocumnetLoad,zoomOptions>
   useEffect(() => {
     const generateViewports = async (pdf: PDFDocumentProxy) => {
       const pageProxies: Array<PDFPageProxy> = [];
@@ -129,9 +130,7 @@ export const usePDFDocumentContext = ({
       };
     };
     loadDocument();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
-
 
   return {
     initialState,

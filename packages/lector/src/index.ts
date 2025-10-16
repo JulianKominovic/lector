@@ -10,10 +10,10 @@ export { TextLayer } from "./components/layers/text-layer";
 export { Outline, OutlineChildItems, OutlineItem } from "./components/outline";
 export { Page } from "./components/page";
 export {
-  CurrentPage,
-  NextPage,
-  PreviousPage,
-  TotalPages,
+	CurrentPage,
+	NextPage,
+	PreviousPage,
+	TotalPages
 } from "./components/page-number";
 export { Pages } from "./components/pages";
 export { Root } from "./components/root";
@@ -23,9 +23,9 @@ export { Thumbnail, Thumbnails } from "./components/thumbnails";
 export { CurrentZoom, ZoomIn, ZoomOut, ZoomToFit } from "./components/zoom";
 export { usePdfJump } from "./hooks/pages/usePdfJump";
 export {
-  useSearch,
-  type SearchResult,
-  type SearchResults,
+	useSearch,
+	type SearchResult,
+	type SearchResults
 } from "./hooks/search/useSearch";
 export { calculateHighlightRects } from "./hooks/search/useSearchPosition";
 export { useAnnotations } from "./hooks/useAnnotations";
@@ -34,3 +34,4 @@ export { LinkService } from "./hooks/usePDFLinkService";
 export { usePDFPageNumber } from "./hooks/usePdfPageNumber";
 export { useSelectionDimensions } from "./hooks/useSelectionDimensions";
 export { usePdf, type ColoredHighlight, type HighlightRect } from "./internal";
+

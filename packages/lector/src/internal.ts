@@ -1,6 +1,7 @@
-import { Virtualizer } from "@tanstack/react-virtual";
+import type { Virtualizer } from "@tanstack/react-virtual";
 import type { PageViewport, PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
-import React, { createRef } from "react";
+import type React from "react";
+import { createRef } from "react";
 import { createStore, useStore } from "zustand";
 
 import { clamp } from "./lib/clamp";
@@ -89,7 +90,6 @@ interface PDFState {
   setResolution: (val: number) => void;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type PDFVirtualizer = Virtualizer<any, any>;
 
 export interface InitialPDFState {
