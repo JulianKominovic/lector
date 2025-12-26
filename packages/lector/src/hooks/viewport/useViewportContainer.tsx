@@ -11,6 +11,11 @@ import { usePdf } from "../../internal";
 import { clamp } from "../../lib/clamp";
 import { firstMemo } from "../../lib/memo";
 
+const WHEEL_ZOOM_SENSITIVITY = 0.01;
+// Heuristics for suppressing trackpad inertia after a CTRL+wheel zoom.
+const WHEEL_INERTIA_GAP_MS = 140;
+const WHEEL_INERTIA_ESCAPE_FACTOR = 1.35;
+
 export const useViewportContainer = ({
 	containerRef,
 	elementWrapperRef,
@@ -21,6 +26,17 @@ export const useViewportContainer = ({
 	elementRef: RefObject<HTMLDivElement | null>;
 }) => {
 	const [origin, setOrigin] = useState<[number, number]>([0, 0]);
+	const wheelInertia = useRef<{
+		active: boolean;
+		lastTime: number;
+		lastAbsDeltaY: number;
+		lastSign: -1 | 0 | 1;
+	}>({
+		active: false,
+		lastTime: 0,
+		lastAbsDeltaY: 0,
+		lastSign: 0,
+	});
 
 	const { maxZoom, minZoom } = usePdf((state) => state.zoomOptions);
 	const zoom = usePdf((state) => state.zoom);
@@ -78,7 +94,18 @@ export const useViewportContainer = ({
 			return;
 		}
 
-		const dZoom = zoom / transformations.current.zoom;
+		const prevZoom = transformations.current.zoom;
+		if (!prevZoom || !Number.isFinite(prevZoom)) {
+			transformations.current = {
+				translateX: containerRef.current.scrollLeft,
+				translateY: containerRef.current.scrollTop,
+				zoom,
+			};
+			updateTransform();
+			return;
+		}
+
+		const dZoom = zoom / prevZoom;
 
 		transformations.current = {
 			translateX: containerRef.current.scrollLeft * dZoom,
@@ -105,18 +132,84 @@ export const useViewportContainer = ({
 		};
 	}, []);
 
+	// Prevent scroll when CTRL is held (zoom mode) and suppress the inertial tail
+	// after releasing CTRL so the PDF doesn't "keep scrolling" from trackpad velocity.
+	useEffect(() => {
+		const container = containerRef.current;
+		if (!container) return;
+
+		const sign = (n: number): -1 | 0 | 1 => (n === 0 ? 0 : n > 0 ? 1 : -1);
+
+		const handleWheelCapture = (event: WheelEvent) => {
+			const st = wheelInertia.current;
+			const now = Date.now();
+			const ctrl = event.ctrlKey || event.metaKey;
+			const abs = Math.abs(event.deltaY);
+			const s = sign(event.deltaY);
+
+			if (ctrl) {
+				st.active = true;
+				st.lastTime = now;
+				st.lastAbsDeltaY = abs;
+				st.lastSign = s;
+				event.preventDefault();
+				return;
+			}
+
+			if (!st.active) {
+				return;
+			}
+
+			if (now - st.lastTime > WHEEL_INERTIA_GAP_MS) {
+				st.active = false;
+				return;
+			}
+
+			if (st.lastSign !== 0 && s !== 0 && s !== st.lastSign) {
+				st.active = false;
+				return;
+			}
+			if (
+				st.lastAbsDeltaY > 0 &&
+				abs > st.lastAbsDeltaY * WHEEL_INERTIA_ESCAPE_FACTOR + 1
+			) {
+				st.active = false;
+				return;
+			}
+
+			st.lastTime = now;
+			st.lastAbsDeltaY = abs;
+			st.lastSign = s;
+			event.preventDefault();
+		};
+
+		container.addEventListener("wheel", handleWheelCapture, {
+			passive: false,
+			capture: true,
+		});
+		return () => {
+			container.removeEventListener("wheel", handleWheelCapture, {
+				capture: true,
+			} as AddEventListenerOptions);
+		};
+	}, [containerRef]);
+
 	useGesture(
 		{
-			onPinch: ({ origin, first, movement: [ms], memo }) => {
+			onPinch: (state) => {
+				const { origin, first, movement, delta, event, memo } = state;
+				const [ms] = movement;
+				const [deltaScale] = delta;
+
 				const currentElement = elementRef.current;
 				const currentContainer = containerRef.current;
 
 				if (!currentElement || !currentContainer) return;
 
-				if (!elementRef.current || !containerRef.current) return;
 				const newMemo = firstMemo(first, memo, () => {
 					const elementRect = currentElement.getBoundingClientRect();
 					const containerRect = currentContainer.getBoundingClientRect();
+					const currentZoom = transformations.current.zoom;
 
 					const contentPosition: [number, number] = [
 						origin[0] - elementRect.left,
@@ -129,20 +222,44 @@ export const useViewportContainer = ({
 					];
 
 					setOrigin([
-						contentPosition[0] / transformations.current.zoom,
-						contentPosition[1] / transformations.current.zoom,
+						contentPosition[0] / currentZoom,
+						contentPosition[1] / currentZoom,
 					]);
 
 					return {
 						contentPosition,
 						containerPosition,
-						originZoom: transformations.current.zoom,
-						originTranslate: transformations.current.translateY,
+						originZoom: currentZoom,
+						lastZoom: currentZoom,
 					};
 				});
 
-				const newZoom = clamp(ms * newMemo.originZoom, minZoom, maxZoom);
+				if (first) {
+					return newMemo;
+				}
 
+				const gestureValuesValid = Number.isFinite(ms) && ms > 0;
+
+				let effectiveScale = ms;
+				if (!gestureValuesValid) {
+					const wheelEvent = event as WheelEvent;
+					if (wheelEvent?.deltaY !== undefined) {
+						const wheelDelta = -wheelEvent.deltaY * WHEEL_ZOOM_SENSITIVITY;
+						effectiveScale =
+							(newMemo.lastZoom / newMemo.originZoom) * (1 + wheelDelta);
+					} else if (Number.isFinite(deltaScale) && deltaScale !== 0) {
+						effectiveScale =
+							(newMemo.lastZoom / newMemo.originZoom) * (1 + deltaScale);
+					} else {
+						return newMemo;
+					}
+				}
+
+				const newZoom = clamp(
+					effectiveScale * newMemo.originZoom,
+					minZoom,
+					maxZoom,
+				);
 				const realMs = newZoom / newMemo.originZoom;
 
 				const newTranslateX =
@@ -156,6 +273,7 @@ export const useViewportContainer = ({
 					translateY: newTranslateY,
 				};
 
+				newMemo.lastZoom = newZoom;
 				updateTransform(true);
 
 				return newMemo;
